@@ -24,6 +24,11 @@ class PlayerViewController: UIViewController {
     var artistLabel: UILabel!
     var titleLabel: UILabel!
     
+    // Slider?
+    
+    var scrubber: UISlider!
+    var scubberTimer: NSTimer!
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         view = UIView(frame: UIScreen.mainScreen().bounds)
@@ -104,7 +109,19 @@ class PlayerViewController: UIViewController {
         nextButton.addTarget(self, action: "nextTrackTapped:",
             forControlEvents: UIControlEvents.TouchUpInside)
         view.addSubview(nextButton)
-
+        
+        scrubber = UISlider(frame: CGRectMake(30,
+                                              width + offset * 0.40,
+                                              width - 60,
+                                              20))
+        scrubber.minimumValue = 0.0
+        scrubber.maximumValue = 1.0
+        scrubber.continuous = true
+        scrubber.value = 0.0
+        scrubber.addTarget(self, action: "sliderValueDidChange:", forControlEvents: .ValueChanged)
+        view.addSubview(scrubber)
+        
+        scubberTimer = NSTimer.scheduledTimerWithTimeInterval(0.25, target: self, selector: "updateScrubberTime", userInfo: nil, repeats: true)
     }
 
     
@@ -130,7 +147,22 @@ class PlayerViewController: UIViewController {
         let track = tracks[currentIndex]
         let url = NSURL(string: "https://api.soundcloud.com/tracks/\(track.id)/stream?client_id=\(clientID)")!
         // FILL ME IN
-    
+        
+        let song = AVPlayerItem(URL: url)
+        
+        if ((player.currentItem?.asset as? AVURLAsset)?.URL != (song.asset as! AVURLAsset).URL) {
+            player.replaceCurrentItemWithPlayerItem(song)
+        }
+        
+        if (sender.selected) {
+            sender.selected = false
+            player.pause()
+        } else {
+            if (player.currentItem!.status == .ReadyToPlay) {
+                sender.selected = true
+                player.play()
+            }
+        }
     }
     
     /* 
@@ -140,7 +172,19 @@ class PlayerViewController: UIViewController {
      * Remember to update the currentIndex
      */
     func nextTrackTapped(sender: UIButton) {
-    
+        if (currentIndex < tracks.count - 1) {
+            currentIndex = currentIndex + 1
+            if ((player.rate != 0) && (player.error == nil)) {
+                let path = NSBundle.mainBundle().pathForResource("Info", ofType: "plist")
+                let clientID = NSDictionary(contentsOfFile: path!)?.valueForKey("client_id") as! String
+                let track = tracks[currentIndex]
+                let url = NSURL(string: "https://api.soundcloud.com/tracks/\(track.id)/stream?client_id=\(clientID)")!
+                let song = AVPlayerItem(URL: url)
+                player.replaceCurrentItemWithPlayerItem(song)
+            }
+            
+            loadTrackElements()
+        }
     }
 
     /*
@@ -154,8 +198,40 @@ class PlayerViewController: UIViewController {
      */
 
     func previousTrackTapped(sender: UIButton) {
-    
+        let cmTime = player.currentTime()
+        if (CMTimeGetSeconds(cmTime) > 3) {
+            player.seekToTime(CMTime(seconds: 0.0, preferredTimescale: cmTime.timescale))
+        } else {
+            if (currentIndex != 0) {
+                currentIndex = currentIndex - 1
+                if ((player.rate != 0) && (player.error == nil)) {
+                    let path = NSBundle.mainBundle().pathForResource("Info", ofType: "plist")
+                    let clientID = NSDictionary(contentsOfFile: path!)?.valueForKey("client_id") as! String
+                    let track = tracks[currentIndex]
+                    let url = NSURL(string: "https://api.soundcloud.com/tracks/\(track.id)/stream?client_id=\(clientID)")!
+                    let song = AVPlayerItem(URL: url)
+                    player.replaceCurrentItemWithPlayerItem(song)
+                }
+                loadTrackElements()
+            }
+        }
     }
+    
+    func sliderValueDidChange(sender: UISlider) {
+        player.seekToTime(CMTimeMultiplyByFloat64((player.currentItem?.duration)!, Double(sender.value)))
+    }
+    
+    func updateScrubberTime() {
+        if player.status == .ReadyToPlay {
+            let curTime = player.currentItem?.currentTime()
+            let duration = player.currentItem?.duration
+            
+            let fraction = CMTimeGetSeconds(curTime!)/CMTimeGetSeconds(duration!)
+            
+            scrubber.value = Float(fraction)
+        }
+    }
+    
     
     
     func asyncLoadTrackImage(track: Track) {
